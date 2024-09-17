@@ -65,12 +65,12 @@ impl<T: Default + Sync + Send> MSQueue<T> {
         }
     }
 
-    pub fn dequeue(&self, hp: &mut HazardPointer) -> Option<T> {
+    pub fn dequeue(&self, hp_head: &mut HazardPointer, hp_next: &mut HazardPointer) -> Option<T> {
         let mut next_ptr;
         loop {
             let head = self
                 .head
-                .safe_load(hp)
+                .safe_load(hp_head)
                 .expect("MS queue should never be empty");
             let head_ptr = head as *const Node<T>;
             let tail_ptr = self.tail.load_ptr();
@@ -92,7 +92,7 @@ impl<T: Default + Sync + Send> MSQueue<T> {
                 } else {
                     // Non-empty
                     // Read next value
-                    let next = head.next.safe_load(hp).unwrap();
+                    let next = head.next.safe_load(hp_next).unwrap();
                     match unsafe {
                         self.head
                             .compare_exchange_ptr(head_ptr as *mut Node<T>, next_ptr)
