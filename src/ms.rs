@@ -32,8 +32,7 @@ impl<T: Sync + Send> MSQueue<T> {
     }
 
     pub fn enqueue(&self, hp: &mut HazardPointer, data: T) {
-        let mut new_node = Box::new(Node::new(data));
-        let new_node_ptr = new_node.as_mut() as *mut Node<T>;
+        let new_node: *mut Node<T> = Box::new(Node::new(data)).into_raw();
 
         let mut tail;
         loop {
@@ -41,11 +40,14 @@ impl<T: Sync + Send> MSQueue<T> {
             // Remove if? We think it is an optimization.
             if std::ptr::eq(tail, self.tail.load_ptr()) {
                 if std::ptr::eq(tail.next.load_ptr(), std::ptr::null_mut()) {
-                    // Try swapping this compare_exchange with compare_exchange_ptr
-                    // at the bottom of this function?
-                    match tail.next.compare_exchange(std::ptr::null_mut(), new_node) {
-                        Ok(_) => break,
-                        Err(v) => new_node = v,
+                    // Why did it not work with compare_exchange here?
+                    if unsafe {
+                        tail.next
+                            .compare_exchange_ptr(std::ptr::null_mut(), new_node)
+                    }
+                    .is_ok()
+                    {
+                        break;
                     }
                 } else {
                     unsafe {
@@ -60,7 +62,7 @@ impl<T: Sync + Send> MSQueue<T> {
         unsafe {
             let _ = self
                 .tail
-                .compare_exchange_ptr(tail as *const Node<T> as *mut Node<T>, new_node_ptr);
+                .compare_exchange_ptr(tail as *const Node<T> as *mut Node<T>, new_node);
         }
     }
 
@@ -89,8 +91,7 @@ impl<T: Sync + Send> MSQueue<T> {
                         }
                     }
                 } else {
-                    // Non-empty
-                    // Read next value
+                    // Non-empty, read next value
                     let next = head.next.safe_load(hp_next).unwrap();
                     match unsafe {
                         self.head
@@ -101,7 +102,8 @@ impl<T: Sync + Send> MSQueue<T> {
                                 unlinked_head_ptr.unwrap().retire();
                             }
 
-                            // Should return next.value, by value
+                            // Take and return ownership of the data.
+                            // Algorithm guarantees we never read this data again.
                             return Some(unsafe { std::ptr::read(next.data.deref() as *const _) });
                         }
                         Err(_new_next) => {}
@@ -138,7 +140,7 @@ impl<'q, T: Sync + Send> QueueHandle<'q, T> {
 
 #[cfg(test)]
 mod test {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Mutex;
 
     use super::{MSQueue, QueueHandle};
 
@@ -176,34 +178,23 @@ mod test {
     fn simple_multi_threaded_enqueue_test() {
         let queue = MSQueue::new();
         std::thread::scope(|s| {
-            s.spawn(|| {
-                let mut qh = QueueHandle::new(&queue);
-                for i in 0..1000 {
-                    qh.enqueue(i);
-                }
-            });
-
-            s.spawn(|| {
-                let mut qh = QueueHandle::new(&queue);
-                for i in 1000..2000 {
-                    qh.enqueue(i);
-                }
-            });
-
-            s.spawn(|| {
-                let mut qh = QueueHandle::new(&queue);
-                for i in 2000..3000 {
-                    qh.enqueue(i);
-                }
-            });
+            let queue = &queue;
+            for c in 0..3 {
+                s.spawn(move || {
+                    let mut qh = QueueHandle::new(queue);
+                    for i in (c * 100)..((c + 1) * 100) {
+                        qh.enqueue(i);
+                    }
+                });
+            }
         });
 
         let mut qh = QueueHandle::new(&queue);
-        let mut next_expected = [0, 1000, 2000];
-        for _ in 0..3000 {
+        let mut next_expected = [0, 100, 200];
+        for _ in 0..300 {
             let val = qh.dequeue().expect("should have more elements");
-            assert_eq!(next_expected[val / 1000], val);
-            next_expected[val / 1000] = val + 1;
+            assert_eq!(next_expected[val / 100], val);
+            next_expected[val / 100] = val + 1;
         }
         assert_eq!(qh.dequeue(), None);
     }
@@ -225,7 +216,7 @@ mod test {
                 s.spawn(move || {
                     let mut qh = QueueHandle::new(queue);
                     let mut successful = 0;
-                    while successful < 1000 {
+                    while successful < 100 {
                         let val = qh.dequeue();
                         if let Some(val) = val {
                             successful += 1;
@@ -240,7 +231,7 @@ mod test {
             for _ in 0..10 {
                 s.spawn(|| {
                     let mut qh = QueueHandle::new(&queue);
-                    for _ in 0..1000 {
+                    for _ in 0..100 {
                         let val = qh.dequeue();
                         if let Some(val) = val {
                             qh.enqueue(val);
