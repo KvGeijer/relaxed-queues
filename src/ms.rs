@@ -32,8 +32,7 @@ impl<T: Sync + Send> MSQueue<T> {
     }
 
     pub fn enqueue(&self, hp: &mut HazardPointer, data: T) {
-        let mut new_node = Box::new(Node::new(data));
-        let new_node_ptr = new_node.as_mut() as *mut Node<T>;
+        let mut new_node: *mut Node<T> = Box::new(Node::new(data)).into_raw();
 
         let mut tail;
         loop {
@@ -43,10 +42,17 @@ impl<T: Sync + Send> MSQueue<T> {
                 if std::ptr::eq(tail.next.load_ptr(), std::ptr::null_mut()) {
                     // Try swapping this compare_exchange with compare_exchange_ptr
                     // at the bottom of this function?
-                    match tail.next.compare_exchange(std::ptr::null_mut(), new_node) {
+                    match unsafe {
+                        tail.next
+                            .compare_exchange_ptr(std::ptr::null_mut(), new_node)
+                    } {
                         Ok(_) => break,
                         Err(v) => new_node = v,
                     }
+                    // match tail.next.compare_exchange(std::ptr::null_mut(), new_node) {
+                    //     Ok(_) => break,
+                    //     Err(v) => new_node = v,
+                    // }
                 } else {
                     unsafe {
                         let _ = self.tail.compare_exchange_ptr(
@@ -60,7 +66,7 @@ impl<T: Sync + Send> MSQueue<T> {
         unsafe {
             let _ = self
                 .tail
-                .compare_exchange_ptr(tail as *const Node<T> as *mut Node<T>, new_node_ptr);
+                .compare_exchange_ptr(tail as *const Node<T> as *mut Node<T>, new_node);
         }
     }
 
@@ -138,7 +144,7 @@ impl<'q, T: Sync + Send> QueueHandle<'q, T> {
 
 #[cfg(test)]
 mod test {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Mutex;
 
     use super::{MSQueue, QueueHandle};
 
