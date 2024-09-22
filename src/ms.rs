@@ -1,15 +1,17 @@
+use std::{mem::ManuallyDrop, ops::Deref};
+
 use haphazard::{raw::Pointer, AtomicPtr, HazardPointer};
 
 struct Node<T> {
     next: AtomicPtr<Node<T>>,
-    data: T, // TODO: Don't drop on free
+    data: ManuallyDrop<T>,
 }
 
 impl<T> Node<T> {
     fn new(data: T) -> Self {
         Self {
             next: unsafe { AtomicPtr::new(core::ptr::null_mut()) },
-            data,
+            data: ManuallyDrop::new(data),
         }
     }
 }
@@ -19,13 +21,10 @@ pub struct MSQueue<T> {
     tail: AtomicPtr<Node<T>>,
 }
 
-// pub struct MSQueueHandle<T, 'ms> {
-//     queue: &'ms Ms
-// }
-
-impl<T: Default + Sync + Send> MSQueue<T> {
+impl<T: Sync + Send> MSQueue<T> {
     pub fn new() -> Self {
-        let sentinel = Box::new(Node::new(T::default())).into_raw();
+        let sentinel = Box::new(Node::new(unsafe { std::mem::zeroed() })).into_raw();
+        // TODO drop all data in queue when queue dropped
         Self {
             head: unsafe { AtomicPtr::new(sentinel) },
             tail: unsafe { AtomicPtr::new(sentinel) },
@@ -99,20 +98,174 @@ impl<T: Default + Sync + Send> MSQueue<T> {
                     } {
                         Ok(unlinked_head_ptr) => {
                             unsafe {
-                                // Retire head_ptr (TODO: Don't free data: T)
                                 unlinked_head_ptr.unwrap().retire();
                             }
 
                             // Should return next.value, by value
-                            return Some(std::mem::replace(
-                                unsafe { (&next.data as *const T as *mut T).as_mut().unwrap() },
-                                unsafe { std::mem::zeroed() },
-                            ));
+                            return Some(unsafe { std::ptr::read(next.data.deref() as *const _) });
                         }
                         Err(_new_next) => {}
                     }
                 }
             }
+        }
+    }
+}
+
+pub struct QueueHandle<'q, T> {
+    hz1: HazardPointer<'static>,
+    hz2: HazardPointer<'static>,
+    queue: &'q MSQueue<T>,
+}
+
+impl<'q, T: Sync + Send> QueueHandle<'q, T> {
+    pub fn new(queue: &'q MSQueue<T>) -> Self {
+        Self {
+            hz1: HazardPointer::new(),
+            hz2: HazardPointer::new(),
+            queue,
+        }
+    }
+
+    pub fn enqueue(&mut self, data: T) {
+        self.queue.enqueue(&mut self.hz1, data);
+    }
+
+    pub fn dequeue(&mut self) -> Option<T> {
+        self.queue.dequeue(&mut self.hz1, &mut self.hz2)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::{Arc, Mutex};
+
+    use super::{MSQueue, QueueHandle};
+
+    #[test]
+    fn simple_test() {
+        let queue = MSQueue::new();
+        let mut qh = QueueHandle::new(&queue);
+        qh.enqueue(5);
+        assert_eq!(qh.dequeue(), Some(5));
+        assert_eq!(qh.dequeue(), None);
+    }
+
+    #[test]
+    fn many_elem_test() {
+        let queue = MSQueue::new();
+        let mut qh = QueueHandle::new(&queue);
+        for i in 0..5 {
+            qh.enqueue(i);
+        }
+        assert_eq!(qh.dequeue(), Some(0));
+        assert_eq!(qh.dequeue(), Some(1));
+        for i in 5..10 {
+            qh.enqueue(i);
+        }
+        for i in 2..10 {
+            assert_eq!(qh.dequeue(), Some(i));
+        }
+        assert_eq!(qh.dequeue(), None);
+        assert_eq!(qh.dequeue(), None);
+        assert_eq!(qh.dequeue(), None);
+        assert_eq!(qh.dequeue(), None);
+    }
+
+    #[test]
+    fn simple_multi_threaded_enqueue_test() {
+        let queue = MSQueue::new();
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                let mut qh = QueueHandle::new(&queue);
+                for i in 0..1000 {
+                    qh.enqueue(i);
+                }
+            });
+
+            s.spawn(|| {
+                let mut qh = QueueHandle::new(&queue);
+                for i in 1000..2000 {
+                    qh.enqueue(i);
+                }
+            });
+
+            s.spawn(|| {
+                let mut qh = QueueHandle::new(&queue);
+                for i in 2000..3000 {
+                    qh.enqueue(i);
+                }
+            });
+        });
+
+        let mut qh = QueueHandle::new(&queue);
+        let mut next_expected = [0, 1000, 2000];
+        for _ in 0..3000 {
+            let val = qh.dequeue().expect("should have more elements");
+            assert_eq!(next_expected[val / 1000], val);
+            next_expected[val / 1000] = val + 1;
+        }
+        assert_eq!(qh.dequeue(), None);
+    }
+
+    #[test]
+    fn multi_threaded_check_all_exists() {
+        let queue = MSQueue::new();
+        std::thread::scope(|s| {
+            let queue = &queue;
+            for c in 0..10 {
+                s.spawn(move || {
+                    let mut qh = QueueHandle::new(queue);
+                    for i in (c * 100)..((c + 1) * 100) {
+                        qh.enqueue(i);
+                    }
+                });
+            }
+            for _ in 0..10 {
+                s.spawn(move || {
+                    let mut qh = QueueHandle::new(queue);
+                    let mut successful = 0;
+                    while successful < 1000 {
+                        let val = qh.dequeue();
+                        if let Some(val) = val {
+                            successful += 1;
+                            qh.enqueue(val);
+                        }
+                    }
+                });
+            }
+        });
+        let collected_elements = Mutex::new(Vec::new());
+        std::thread::scope(|s| {
+            for _ in 0..10 {
+                s.spawn(|| {
+                    let mut qh = QueueHandle::new(&queue);
+                    for _ in 0..1000 {
+                        let val = qh.dequeue();
+                        if let Some(val) = val {
+                            qh.enqueue(val);
+                        }
+                    }
+                });
+            }
+            for _ in 0..10 {
+                s.spawn(|| {
+                    let mut qh = QueueHandle::new(&queue);
+                    while let Some(v) = qh.dequeue() {
+                        collected_elements.lock().unwrap().push(v);
+                    }
+                });
+            }
+        });
+        let mut qh = QueueHandle::new(&queue);
+        let mut collected_elements = collected_elements.lock().unwrap();
+        while let Some(v) = qh.dequeue() {
+            collected_elements.push(v);
+        }
+        assert_eq!(collected_elements.len(), 1000);
+        collected_elements.sort_unstable();
+        for i in 0..1000 {
+            assert_eq!(collected_elements[i], i);
         }
     }
 }
