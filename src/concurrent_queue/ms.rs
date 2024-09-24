@@ -2,6 +2,8 @@ use std::{mem::ManuallyDrop, ops::Deref};
 
 use haphazard::{raw::Pointer, AtomicPtr, HazardPointer};
 
+use super::{ConcurrentQueue, Handle};
+
 struct Node<T> {
     next: AtomicPtr<Node<T>>,
     data: ManuallyDrop<T>,
@@ -114,6 +116,16 @@ impl<T: Sync + Send> MSQueue<T> {
     }
 }
 
+impl<T: Send + Sync> ConcurrentQueue<T> for MSQueue<T> {
+    fn new() -> Self {
+        MSQueue::new()
+    }
+
+    fn register(&self) -> impl Handle<T> {
+        QueueHandle::new(self)
+    }
+}
+
 pub struct QueueHandle<'q, T> {
     hz1: HazardPointer<'static>,
     hz2: HazardPointer<'static>,
@@ -135,6 +147,16 @@ impl<'q, T: Sync + Send> QueueHandle<'q, T> {
 
     pub fn dequeue(&mut self) -> Option<T> {
         self.queue.dequeue(&mut self.hz1, &mut self.hz2)
+    }
+}
+
+impl<T: Send + Sync> Handle<T> for QueueHandle<'_, T> {
+    fn enqueue(&mut self, item: T) {
+        QueueHandle::enqueue(self, item);
+    }
+
+    fn dequeue(&mut self) -> Option<T> {
+        QueueHandle::dequeue(self)
     }
 }
 
