@@ -1,6 +1,10 @@
 use clap::Parser;
+use core_affinity::CoreId;
 use std::{
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Barrier,
+    },
     thread,
     time::Duration,
 };
@@ -44,12 +48,26 @@ where
     let done: AtomicBool = AtomicBool::new(false);
     let enqueues = AtomicUsize::new(0);
     let dequeues = AtomicUsize::new(0);
+    let barrier = Barrier::new(config.producer_threads + config.consumer_threads + 1);
 
+    let available_cores: Vec<CoreId> =
+        core_affinity::get_core_ids().unwrap_or(vec![CoreId { id: 0 }]);
+    let mut core_iter = available_cores.into_iter().cycle();
     thread::scope(|s| {
+        // To get move semantict for thread closures
+        let queue = &queue;
+        let enqueues = &enqueues;
+        let dequeues = &dequeues;
+        let done = &done;
+        let barrier = &barrier;
+
         for _ in 0..config.producer_threads {
-            s.spawn(|| {
+            let core: CoreId = core_iter.next().unwrap();
+            s.spawn(move || {
+                core_affinity::set_for_current(core);
                 let mut local_enqueues = 0;
                 let mut handle = queue.register();
+                barrier.wait();
                 while !done.load(Ordering::Relaxed) {
                     handle.enqueue(405);
                     local_enqueues += 1;
@@ -58,9 +76,12 @@ where
             });
         }
         for _ in 0..config.consumer_threads {
-            s.spawn(|| {
+            let core: CoreId = core_iter.next().unwrap();
+            s.spawn(move || {
+                core_affinity::set_for_current(core);
                 let mut local_dequeues = 0;
                 let mut handle = queue.register();
+                barrier.wait();
                 while !done.load(Ordering::Relaxed) {
                     handle.dequeue();
                     local_dequeues += 1;
@@ -69,6 +90,7 @@ where
             });
         }
 
+        barrier.wait();
         std::thread::sleep(Duration::from_secs(config.duration as u64));
         done.store(true, Ordering::Relaxed);
     });
