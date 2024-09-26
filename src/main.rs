@@ -22,16 +22,19 @@ fn main() {
 struct BenchConfig {
     /// number of elements to add to the queue before starting the main
     /// threaded test.
-    #[arg(long)]
+    #[arg(long, default_value_t = 1024)]
     prefill: usize,
+
     /// number of threads pushing elements onto the queue.
-    #[arg(long)]
+    #[arg(short, long)]
     producer_threads: usize,
+
     /// number of threads popping elements off the queue.
-    #[arg(long)]
+    #[arg(short, long)]
     consumer_threads: usize,
+
     /// duration in seconds to run the test
-    #[arg(long)]
+    #[arg(short, long)]
     duration: usize,
 }
 
