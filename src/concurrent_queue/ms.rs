@@ -42,7 +42,7 @@ impl<T: Sync + Send> MSQueue<T> {
         loop {
             tail = self.tail.safe_load(hp).unwrap();
             // Remove if? We think it is an optimization.
-            if std::ptr::eq(tail, self.tail.load_ptr()) {
+            // if std::ptr::eq(tail, self.tail.load_ptr()) {
                 if std::ptr::eq(tail.next.load_ptr(), std::ptr::null_mut()) {
                     // Why did it not work with compare_exchange here?
                     if unsafe {
@@ -61,7 +61,7 @@ impl<T: Sync + Send> MSQueue<T> {
                         );
                     };
                 }
-            };
+            // };
         }
         unsafe {
             let _ = self
@@ -71,7 +71,6 @@ impl<T: Sync + Send> MSQueue<T> {
     }
 
     pub fn dequeue(&self, hp_head: &mut HazardPointer, hp_next: &mut HazardPointer) -> Option<T> {
-        let mut next_ptr;
         loop {
             let head = self
                 .head
@@ -81,7 +80,7 @@ impl<T: Sync + Send> MSQueue<T> {
             let tail_ptr = self.tail.load_ptr();
 
             if head_ptr == self.head.load_ptr() {
-                next_ptr = head.next.load_ptr();
+                let next_ptr = head.next.load_ptr();
                 if head_ptr == tail_ptr {
                     if next_ptr.is_null() {
                         // Empty
