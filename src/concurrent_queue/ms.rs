@@ -23,7 +23,7 @@ pub struct MSQueue<T> {
     tail: AtomicPtr<Node<T>>,
 }
 
-impl<T: Sync + Send> MSQueue<T> {
+impl<T> MSQueue<T> {
     pub fn new() -> Self {
         let sentinel = Box::new(Node::new(unsafe { std::mem::zeroed() })).into_raw();
         // TODO drop all data in queue when queue dropped
@@ -32,7 +32,9 @@ impl<T: Sync + Send> MSQueue<T> {
             tail: unsafe { AtomicPtr::new(sentinel) },
         }
     }
+}
 
+impl<T: Sync + Send> MSQueue<T> {
     pub fn enqueue(&self, hp: &mut HazardPointer, data: T) {
         let new_node: *mut Node<T> = Box::new(Node::new(data)).into_raw();
 
