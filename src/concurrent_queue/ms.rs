@@ -42,7 +42,7 @@ impl<T: Sync + Send> MSQueue<T> {
         loop {
             tail = self.tail.safe_load(hp).unwrap();
             // Remove if? We think it is an optimization.
-            // if std::ptr::eq(tail, self.tail.load_ptr()) {
+            if std::ptr::eq(tail, self.tail.load_ptr()) {
                 if std::ptr::eq(tail.next.load_ptr(), std::ptr::null_mut()) {
                     // Why did it not work with compare_exchange here?
                     if unsafe {
@@ -61,7 +61,7 @@ impl<T: Sync + Send> MSQueue<T> {
                         );
                     };
                 }
-            // };
+            };
         }
         unsafe {
             let _ = self
@@ -96,20 +96,17 @@ impl<T: Sync + Send> MSQueue<T> {
                 } else {
                     // Non-empty, read next value
                     let next = head.next.safe_load(hp_next).unwrap();
-                    match unsafe {
+                    if let Ok(unlinked_head_ptr) = unsafe {
                         self.head
                             .compare_exchange_ptr(head_ptr as *mut Node<T>, next_ptr)
                     } {
-                        Ok(unlinked_head_ptr) => {
-                            unsafe {
-                                unlinked_head_ptr.unwrap().retire();
-                            }
-
-                            // Take and return ownership of the data.
-                            // Algorithm guarantees we never read this data again.
-                            return Some(unsafe { std::ptr::read(next.data.deref() as *const _) });
+                        unsafe {
+                            unlinked_head_ptr.unwrap().retire();
                         }
-                        Err(_new_next) => {}
+
+                        // Take and return ownership of the data.
+                        // Algorithm guarantees we never read this data again.
+                        return Some(unsafe { std::ptr::read(next.data.deref() as *const _) });
                     }
                 }
             }
