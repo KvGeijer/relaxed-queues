@@ -90,7 +90,7 @@ impl<T: Sync + Send> MSQueue<T> {
                         unsafe {
                             let _ = self
                                 .tail
-                                .compare_exchange_ptr(tail_ptr as *mut Node<T>, next_ptr);
+                                .compare_exchange_ptr(tail_ptr, next_ptr);
                         }
                     }
                 } else {
