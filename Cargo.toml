@@ -7,6 +7,7 @@ edition = "2021"
 clap = { version = "4.5.18", features = ["derive"] }
 core_affinity = "0.8.1"
 haphazard = "0.1.8"
+rand = "*"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 jemallocator = "0.3.2"

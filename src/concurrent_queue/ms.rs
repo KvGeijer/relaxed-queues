@@ -2,7 +2,9 @@ use std::{mem::ManuallyDrop, ops::Deref};
 
 use haphazard::{raw::Pointer, AtomicPtr, HazardPointer};
 
-use super::{ConcurrentQueue, Handle};
+use crate::{ConcurrentQueue, Handle, Strict};
+
+use super::ConcurrentSubQueue;
 
 struct Node<T> {
     next: AtomicPtr<Node<T>>,
@@ -115,6 +117,8 @@ impl<T: Sync + Send> MSQueue<T> {
 }
 
 impl<T: Send + Sync> ConcurrentQueue<T> for MSQueue<T> {
+    type QueueType = Strict;
+
     fn new() -> Self {
         MSQueue::new()
     }
@@ -155,6 +159,27 @@ impl<T: Send + Sync> Handle<T> for QueueHandle<'_, T> {
 
     fn dequeue(&mut self) -> Option<T> {
         QueueHandle::dequeue(self)
+    }
+}
+
+impl<T: Send + Sync> ConcurrentSubQueue<T> for MSQueue<T> {
+    type LockType = (HazardPointer<'static>, HazardPointer<'static>);
+    fn new() -> Self {
+        MSQueue::new()
+    }
+
+    fn enqueue(&self, item: T, lock_type: &mut Self::LockType) {
+        let (hz, _) = lock_type;
+        self.enqueue(hz, item);
+    }
+
+    fn dequeue(&self, lock_type: &mut Self::LockType) -> Option<T> {
+        let (hz1, hz2) = lock_type;
+        self.dequeue(hz1, hz2)
+    }
+
+    fn new_lock() -> Self::LockType {
+        (HazardPointer::new(), HazardPointer::new())
     }
 }
 

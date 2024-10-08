@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 
-use relaxed_queues::concurrent_queue::{ms::MSQueue, ConcurrentQueue, Handle};
+use relaxed_queues::{concurrent_queue::ms::MSQueue, ConcurrentQueue, Handle};
 
 fn main() {
     let config = BenchConfig::parse();
