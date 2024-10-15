@@ -1,9 +1,10 @@
-#[cfg(not(target_env = "msvc"))]
-use jemallocator::Jemalloc;
+// Disabled due to issues with Miri
+// #[cfg(not(target_env = "msvc"))]
+// use jemallocator::Jemalloc;
 
-#[cfg(not(target_env = "msvc"))]
-#[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
+// #[cfg(not(target_env = "msvc"))]
+// #[global_allocator]
+// static GLOBAL: Jemalloc = Jemalloc;
 
 use clap::Parser;
 use core_affinity::CoreId;

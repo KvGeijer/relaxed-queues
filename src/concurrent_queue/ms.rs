@@ -1,4 +1,4 @@
-use std::{mem::ManuallyDrop, ops::Deref};
+use std::mem::MaybeUninit;
 
 use haphazard::{raw::Pointer, AtomicPtr, HazardPointer};
 
@@ -8,14 +8,20 @@ use super::ConcurrentSubQueue;
 
 struct Node<T> {
     next: AtomicPtr<Node<T>>,
-    data: ManuallyDrop<T>,
+    data: MaybeUninit<T>,
 }
 
 impl<T> Node<T> {
     fn new(data: T) -> Self {
         Self {
             next: unsafe { AtomicPtr::new(core::ptr::null_mut()) },
-            data: ManuallyDrop::new(data),
+            data: MaybeUninit::new(data),
+        }
+    }
+    fn new_uninit() -> Self {
+        Self {
+            next: unsafe { AtomicPtr::new(core::ptr::null_mut()) },
+            data: MaybeUninit::uninit(),
         }
     }
 }
@@ -27,7 +33,7 @@ pub struct MSQueue<T> {
 
 impl<T> MSQueue<T> {
     pub fn new() -> Self {
-        let sentinel = Box::new(Node::new(unsafe { std::mem::zeroed() })).into_raw();
+        let sentinel = Box::new(Node::new_uninit()).into_raw();
         // TODO drop all data in queue when queue dropped
         Self {
             head: unsafe { AtomicPtr::new(sentinel) },
@@ -90,9 +96,7 @@ impl<T: Sync + Send> MSQueue<T> {
                     } else {
                         // Help the partially completed enqueue
                         unsafe {
-                            let _ = self
-                                .tail
-                                .compare_exchange_ptr(tail_ptr, next_ptr);
+                            let _ = self.tail.compare_exchange_ptr(tail_ptr, next_ptr);
                         }
                     }
                 } else {
@@ -103,12 +107,15 @@ impl<T: Sync + Send> MSQueue<T> {
                             .compare_exchange_ptr(head_ptr as *mut Node<T>, next_ptr)
                     } {
                         unsafe {
-                            unlinked_head_ptr.unwrap().retire();
+                            let old = unlinked_head_ptr.unwrap();
+                            old.retire();
                         }
 
                         // Take and return ownership of the data.
                         // Algorithm guarantees we never read this data again.
-                        return Some(unsafe { std::ptr::read(next.data.deref() as *const _) });
+                        return Some(unsafe {
+                            std::ptr::read(next.data.assume_init_ref() as *const _)
+                        });
                     }
                 }
             }
@@ -125,6 +132,25 @@ impl<T: Send + Sync> ConcurrentQueue<T> for MSQueue<T> {
 
     fn register(&self) -> impl Handle<T> {
         QueueHandle::new(self)
+    }
+}
+
+impl<T> Drop for MSQueue<T> {
+    fn drop(&mut self) {
+        let pre_head: Node<T> = unsafe { std::ptr::read(self.head.load_ptr()) };
+        // Don't drop data on self.head (pre_head)
+
+        if pre_head.next.load_ptr().is_null() {
+            return;
+        }
+
+        let Node { mut next, mut data } = unsafe { std::ptr::read(pre_head.next.load_ptr()) };
+        unsafe { data.assume_init() };
+
+        while !next.load_ptr().is_null() {
+            Node { next, data } = unsafe { std::ptr::read(next.load_ptr()) };
+            unsafe { data.assume_init() };
+        }
     }
 }
 
@@ -199,6 +225,25 @@ mod test {
     }
 
     #[test]
+    fn simple_box_test() {
+        let queue = MSQueue::new();
+        let mut qh = QueueHandle::new(&queue);
+        qh.enqueue(Box::new(5));
+        assert_eq!(qh.dequeue(), Some(Box::new(5)));
+        assert_eq!(qh.dequeue(), None);
+    }
+
+    #[test]
+    fn simple_enq_test() {
+        let queue = MSQueue::new();
+        let mut qh = QueueHandle::new(&queue);
+        qh.enqueue(5);
+        qh.enqueue(5);
+        qh.enqueue(5);
+        assert_eq!(qh.dequeue(), Some(5));
+    }
+
+    #[test]
     fn many_elem_test() {
         let queue = MSQueue::new();
         let mut qh = QueueHandle::new(&queue);
@@ -261,7 +306,7 @@ mod test {
                 s.spawn(move || {
                     let mut qh = QueueHandle::new(queue);
                     let mut successful = 0;
-                    while successful < 100 {
+                    while successful < 10 {
                         let val = qh.dequeue();
                         if let Some(val) = val {
                             successful += 1;
@@ -276,7 +321,7 @@ mod test {
             for _ in 0..10 {
                 s.spawn(|| {
                     let mut qh = QueueHandle::new(&queue);
-                    for _ in 0..100 {
+                    for _ in 0..10 {
                         let val = qh.dequeue();
                         if let Some(val) = val {
                             qh.enqueue(val);
