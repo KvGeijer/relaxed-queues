@@ -138,13 +138,11 @@ impl<T: Send + Sync> ConcurrentQueue<T> for MSQueue<T> {
 impl<T> Drop for MSQueue<T> {
     fn drop(&mut self) {
         // Don't drop data on self.head
-        let Node {
-            mut next,
-            data: _data,
-        } = unsafe { std::ptr::read(self.head.load_ptr()) };
+        let head = unsafe { Box::from_raw(self.head.load_ptr()) };
+        let mut next = head.next;
 
         while !next.load_ptr().is_null() {
-            let node = unsafe { std::ptr::read(next.load_ptr()) };
+            let node = unsafe { Box::from_raw(next.load_ptr()) };
 
             // Drop the initialized data
             unsafe { node.data.assume_init() };
@@ -235,13 +233,13 @@ mod test {
     }
 
     #[test]
-    fn simple_enq_test() {
+    fn enq_box_test() {
+        // Just for memory leaks with miri
         let queue = MSQueue::new();
         let mut qh = QueueHandle::new(&queue);
-        qh.enqueue(5);
-        qh.enqueue(5);
-        qh.enqueue(5);
-        assert_eq!(qh.dequeue(), Some(5));
+        for i in 0..100 {
+            qh.enqueue(Box::new(i));
+        }
     }
 
     #[test]
