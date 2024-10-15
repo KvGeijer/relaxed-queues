@@ -137,19 +137,20 @@ impl<T: Send + Sync> ConcurrentQueue<T> for MSQueue<T> {
 
 impl<T> Drop for MSQueue<T> {
     fn drop(&mut self) {
-        let pre_head: Node<T> = unsafe { std::ptr::read(self.head.load_ptr()) };
-        // Don't drop data on self.head (pre_head)
-
-        if pre_head.next.load_ptr().is_null() {
-            return;
-        }
-
-        let Node { mut next, mut data } = unsafe { std::ptr::read(pre_head.next.load_ptr()) };
-        unsafe { data.assume_init() };
+        // Don't drop data on self.head
+        let Node {
+            mut next,
+            data: _data,
+        } = unsafe { std::ptr::read(self.head.load_ptr()) };
 
         while !next.load_ptr().is_null() {
-            Node { next, data } = unsafe { std::ptr::read(next.load_ptr()) };
-            unsafe { data.assume_init() };
+            let node = unsafe { std::ptr::read(next.load_ptr()) };
+
+            // Drop the initialized data
+            unsafe { node.data.assume_init() };
+
+            // Move on to next node
+            next = node.next;
         }
     }
 }
