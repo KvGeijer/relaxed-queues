@@ -6,7 +6,7 @@
 // #[global_allocator]
 // static GLOBAL: Jemalloc = Jemalloc;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use core_affinity::CoreId;
 use std::{
     sync::{
@@ -17,12 +17,16 @@ use std::{
     time::Duration,
 };
 
-use relaxed_queues::{concurrent_queue::ms::MSQueue, ConcurrentQueue, Handle};
+use relaxed_queues::{
+    concurrent_queue::ms::MSQueue, relaxed_queues::dra_queue::DRaQueue, ConcurrentQueue, Handle,
+};
 
 fn main() {
     let config = BenchConfig::parse();
-    let queue = MSQueue::new();
-    benchmark_producer_consumer(queue, config);
+    match config.queue_name {
+        Queue::DraQueue => benchmark_producer_consumer(DRaQueue::<MSQueue<_>, _>::new(), config),
+        Queue::MSQueue => benchmark_producer_consumer(MSQueue::new(), config),
+    };
 }
 
 #[derive(Parser)]
@@ -44,6 +48,15 @@ struct BenchConfig {
     /// duration in seconds to run the test
     #[arg(short, long)]
     duration: usize,
+
+    #[arg(short, long, value_enum)]
+    queue_name: Queue,
+}
+
+#[derive(Clone, ValueEnum)]
+pub enum Queue {
+    MSQueue,
+    DraQueue,
 }
 
 fn benchmark_producer_consumer<C>(queue: C, config: BenchConfig)

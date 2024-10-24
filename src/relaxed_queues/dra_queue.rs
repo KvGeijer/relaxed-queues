@@ -7,7 +7,7 @@ use rand::{rngs::ThreadRng, Rng};
 
 use crate::{concurrent_queue::ConcurrentSubQueue, ConcurrentQueue, Handle, Relaxed};
 
-struct DRaQueue<SubQueue, T> {
+pub struct DRaQueue<SubQueue, T> {
     subqueues: Vec<(SubQueue, AtomicUsize)>,
     d: usize,
     // TODO try the other solution variant:
