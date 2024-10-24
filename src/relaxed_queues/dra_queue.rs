@@ -62,12 +62,6 @@ impl<S: ConcurrentSubQueue<T>, T> Handle<T> for DraQueueHandle<'_, S, T> {
 impl<T, S: ConcurrentSubQueue<T>> ConcurrentQueue<T> for DRaQueue<S, T> {
     type QueueType = Relaxed;
 
-    fn new() -> Self {
-        const INITIAL_QUEUE_COUNT: usize = 8;
-        const INITIAL_D: usize = 2;
-        Self::new_with_config(INITIAL_QUEUE_COUNT, INITIAL_D)
-    }
-
     fn register(&self) -> impl Handle<T> {
         DraQueueHandle {
             queue: self,
@@ -79,7 +73,7 @@ impl<T, S: ConcurrentSubQueue<T>> ConcurrentQueue<T> for DRaQueue<S, T> {
 }
 
 impl<T, S: ConcurrentSubQueue<T>> DRaQueue<S, T> {
-    pub fn new_with_config(queue_count: usize, d: usize) -> Self {
+    pub fn new(queue_count: usize, d: usize) -> Self {
         Self {
             subqueues: (0..queue_count)
                 .map(|_| (S::new(), AtomicUsize::new(0)))

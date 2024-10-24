@@ -1,10 +1,9 @@
-// Disabled due to issues with Miri
-// #[cfg(not(target_env = "msvc"))]
-// use jemallocator::Jemalloc;
+#[cfg(not(target_env = "msvc"))]
+use jemallocator::Jemalloc;
 
-// #[cfg(not(target_env = "msvc"))]
-// #[global_allocator]
-// static GLOBAL: Jemalloc = Jemalloc;
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 use clap::{Parser, ValueEnum};
 use core_affinity::CoreId;
@@ -24,7 +23,9 @@ use relaxed_queues::{
 fn main() {
     let config = BenchConfig::parse();
     match config.queue_name {
-        Queue::DraQueue => benchmark_producer_consumer(DRaQueue::<MSQueue<_>, _>::new(), config),
+        Queue::DraQueue => {
+            benchmark_producer_consumer(DRaQueue::<MSQueue<_>, _>::new(8, 2), config)
+        }
         Queue::MSQueue => benchmark_producer_consumer(MSQueue::new(), config),
     };
 }
