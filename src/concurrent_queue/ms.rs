@@ -126,10 +126,6 @@ impl<T: Sync + Send> MSQueue<T> {
 impl<T: Send + Sync> ConcurrentQueue<T> for MSQueue<T> {
     type QueueType = Strict;
 
-    fn new() -> Self {
-        MSQueue::new()
-    }
-
     fn register(&self) -> impl Handle<T> {
         QueueHandle::new(self)
     }

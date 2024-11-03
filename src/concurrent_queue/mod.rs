@@ -1,3 +1,5 @@
+pub mod crossbeam_queue;
+pub mod lockfree_queue;
 pub mod ms;
 
 pub trait ConcurrentSubQueue<T> {

@@ -27,6 +27,10 @@ fn main() {
             benchmark_producer_consumer(DRaQueue::<MSQueue<_>, _>::new(8, 2), config)
         }
         Queue::MSQueue => benchmark_producer_consumer(MSQueue::new(), config),
+        Queue::LockFreeQueue => benchmark_producer_consumer(lockfree::queue::Queue::new(), config),
+        Queue::CrossbeamQueue => {
+            benchmark_producer_consumer(crossbeam_queue::SegQueue::new(), config)
+        }
     };
 }
 
@@ -58,6 +62,8 @@ struct BenchConfig {
 pub enum Queue {
     MSQueue,
     DraQueue,
+    LockFreeQueue,
+    CrossbeamQueue,
 }
 
 fn benchmark_producer_consumer<C>(queue: C, config: BenchConfig)
