@@ -5,7 +5,7 @@ use jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use core_affinity::CoreId;
 use std::{
     sync::{
@@ -24,12 +24,28 @@ fn main() {
     let config = BenchConfig::parse();
     match config.queue {
         Queue::DraQueue {
+            subqueue,
             subqueues,
             choice: d_choice,
-        } => {
-            let queue = DRaQueue::<MSQueue<_>, _>::new(subqueues, d_choice);
-            benchmark_producer_consumer(queue, config)
-        }
+        } => match subqueue {
+            StrictQueue::MSQueue => {
+                let queue = DRaQueue::<MSQueue<_>, _>::new(subqueues, d_choice);
+                benchmark_producer_consumer(queue, config)
+            }
+            StrictQueue::LockFreeQueue => {
+                let queue = DRaQueue::<lockfree::queue::Queue<_>, _>::new(subqueues, d_choice);
+                benchmark_producer_consumer(queue, config)
+            }
+            StrictQueue::CrossbeamQueue => {
+                let queue = DRaQueue::<crossbeam_queue::SegQueue<_>, _>::new(subqueues, d_choice);
+                benchmark_producer_consumer(queue, config)
+            }
+            StrictQueue::ConcurrentQueue => {
+                let queue =
+                    DRaQueue::<concurrent_queue::ConcurrentQueue<_>, _>::new(subqueues, d_choice);
+                benchmark_producer_consumer(queue, config)
+            }
+        },
         Queue::MSQueue => benchmark_producer_consumer(MSQueue::new(), config),
         Queue::LockFreeQueue => benchmark_producer_consumer(lockfree::queue::Queue::new(), config),
         Queue::CrossbeamQueue => {
@@ -66,9 +82,12 @@ struct BenchConfig {
 }
 
 #[derive(Clone, Subcommand)]
-pub enum Queue {
-    MSQueue,
+enum Queue {
     DraQueue {
+        /// Which sub-queue do we use?
+        #[arg(value_enum)]
+        subqueue: StrictQueue,
+
         /// The number of sub-queues to use
         #[arg(short, long)]
         subqueues: usize,
@@ -77,6 +96,16 @@ pub enum Queue {
         #[arg(short = 'c', long, default_value_t = 2)]
         choice: usize,
     },
+
+    MSQueue,
+    LockFreeQueue,
+    CrossbeamQueue,
+    ConcurrentQueue,
+}
+
+#[derive(ValueEnum, Clone, Copy)]
+enum StrictQueue {
+    MSQueue,
     LockFreeQueue,
     CrossbeamQueue,
     ConcurrentQueue,
