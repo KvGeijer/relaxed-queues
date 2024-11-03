@@ -5,7 +5,7 @@ use jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand};
 use core_affinity::CoreId;
 use std::{
     sync::{
@@ -22,14 +22,21 @@ use relaxed_queues::{
 
 fn main() {
     let config = BenchConfig::parse();
-    match config.queue_name {
-        Queue::DraQueue => {
-            benchmark_producer_consumer(DRaQueue::<MSQueue<_>, _>::new(8, 2), config)
+    match config.queue {
+        Queue::DraQueue {
+            subqueues,
+            choice: d_choice,
+        } => {
+            let queue = DRaQueue::<MSQueue<_>, _>::new(subqueues, d_choice);
+            benchmark_producer_consumer(queue, config)
         }
         Queue::MSQueue => benchmark_producer_consumer(MSQueue::new(), config),
         Queue::LockFreeQueue => benchmark_producer_consumer(lockfree::queue::Queue::new(), config),
         Queue::CrossbeamQueue => {
             benchmark_producer_consumer(crossbeam_queue::SegQueue::new(), config)
+        }
+        Queue::ConcurrentQueue => {
+            benchmark_producer_consumer(concurrent_queue::ConcurrentQueue::unbounded(), config)
         }
     };
 }
@@ -54,16 +61,25 @@ struct BenchConfig {
     #[arg(short, long)]
     duration: usize,
 
-    #[arg(short, long, value_enum)]
-    queue_name: Queue,
+    #[command(subcommand)]
+    queue: Queue,
 }
 
-#[derive(Clone, ValueEnum)]
+#[derive(Clone, Subcommand)]
 pub enum Queue {
     MSQueue,
-    DraQueue,
+    DraQueue {
+        /// The number of sub-queues to use
+        #[arg(short, long)]
+        subqueues: usize,
+
+        /// The number of sub-structures to sample in every operation
+        #[arg(short = 'c', long, default_value_t = 2)]
+        choice: usize,
+    },
     LockFreeQueue,
     CrossbeamQueue,
+    ConcurrentQueue,
 }
 
 fn benchmark_producer_consumer<C>(queue: C, config: BenchConfig)
