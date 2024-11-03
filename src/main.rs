@@ -85,7 +85,7 @@ struct BenchConfig {
 enum Queue {
     DraQueue {
         /// Which sub-queue do we use?
-        #[arg(value_enum)]
+        #[arg(long, value_enum)]
         subqueue: StrictQueue,
 
         /// The number of sub-queues to use
