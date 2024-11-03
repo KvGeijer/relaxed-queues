@@ -1,3 +1,4 @@
+pub mod concurrent_queue;
 pub mod crossbeam_queue;
 pub mod lockfree_queue;
 pub mod ms;

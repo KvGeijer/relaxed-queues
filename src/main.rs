@@ -17,7 +17,7 @@ use std::{
 };
 
 use relaxed_queues::{
-    concurrent_queue::ms::MSQueue, relaxed_queues::dra_queue::DRaQueue, ConcurrentQueue, Handle,
+    relaxed_queues::dra_queue::DRaQueue, strict_queue::ms::MSQueue, ConcurrentQueue, Handle,
 };
 
 fn main() {

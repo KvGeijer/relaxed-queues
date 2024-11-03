@@ -10,6 +10,7 @@ crossbeam-queue = "0.3.11"
 haphazard = "0.1.8"
 lockfree = "0.5.1"
 rand = "*"
+concurrent-queue = "2.5.0"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 jemallocator = "0.3.2"

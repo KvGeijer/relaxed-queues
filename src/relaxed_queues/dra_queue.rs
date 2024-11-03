@@ -5,7 +5,7 @@ use std::{
 
 use rand::{rngs::ThreadRng, Rng};
 
-use crate::{concurrent_queue::ConcurrentSubQueue, ConcurrentQueue, Handle, Relaxed};
+use crate::{strict_queue::ConcurrentSubQueue, ConcurrentQueue, Handle, Relaxed};
 
 pub struct DRaQueue<SubQueue, T> {
     subqueues: Vec<(SubQueue, AtomicUsize)>,
