@@ -17,7 +17,9 @@ use std::{
 };
 
 use relaxed_queues::{
-    relaxed_queues::dra_queue::DRaQueue, strict_queue::ms::MSQueue, ConcurrentQueue, Handle,
+    relaxed_queues::{dra_queue::DRaQueue, round_robin_queue::RoundRobinQueue},
+    strict_queue::ms::MSQueue,
+    ConcurrentQueue, Handle,
 };
 
 fn main() {
@@ -43,6 +45,28 @@ fn main() {
             StrictQueue::ConcurrentQueue => {
                 let queue =
                     DRaQueue::<concurrent_queue::ConcurrentQueue<_>, _>::new(subqueues, d_choice);
+                benchmark_producer_consumer(queue, config)
+            }
+        },
+        Queue::RoundRobin {
+            subqueue,
+            subqueues,
+        } => match subqueue {
+            StrictQueue::MSQueue => {
+                let queue = RoundRobinQueue::<MSQueue<_>, _>::new(subqueues);
+                benchmark_producer_consumer(queue, config)
+            }
+            StrictQueue::LockFreeQueue => {
+                let queue = RoundRobinQueue::<lockfree::queue::Queue<_>, _>::new(subqueues);
+                benchmark_producer_consumer(queue, config)
+            }
+            StrictQueue::CrossbeamQueue => {
+                let queue = RoundRobinQueue::<crossbeam_queue::SegQueue<_>, _>::new(subqueues);
+                benchmark_producer_consumer(queue, config)
+            }
+            StrictQueue::ConcurrentQueue => {
+                let queue =
+                    RoundRobinQueue::<concurrent_queue::ConcurrentQueue<_>, _>::new(subqueues);
                 benchmark_producer_consumer(queue, config)
             }
         },
@@ -95,6 +119,15 @@ enum Queue {
         /// The number of sub-structures to sample in every operation
         #[arg(short = 'c', long, default_value_t = 2)]
         choice: usize,
+    },
+    RoundRobin {
+        /// Which sub-queue do we use?
+        #[arg(long, value_enum)]
+        subqueue: StrictQueue,
+
+        /// The number of sub-queues to use
+        #[arg(short, long)]
+        subqueues: usize,
     },
 
     MSQueue,
