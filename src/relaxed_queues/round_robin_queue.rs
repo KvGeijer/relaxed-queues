@@ -58,7 +58,10 @@ impl<S: ConcurrentSubQueue<T>, T> Handle<T> for RoundRobinQueueHandle<'_, S, T> 
             return Some(item);
         }
         // fallback to checking all queues
-        for queue in &self.queue.subqueues {
+        for queue in self.queue.subqueues[self.cursor..]
+            .iter()
+            .chain(self.queue.subqueues[0..self.cursor].iter())
+        {
             if let Some(item) = queue.dequeue(&mut self.lock) {
                 return Some(item);
             }
