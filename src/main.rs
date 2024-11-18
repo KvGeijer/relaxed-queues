@@ -18,12 +18,13 @@ use std::{
 
 use relaxed_queues::{
     relaxed_queues::{dra_queue::DRaQueue, round_robin_queue::RoundRobinQueue},
-    strict_queue::ms::MSQueue,
+    strict_queue::{countable_wrapper::CountableWrapper, ms::MSQueue},
     ConcurrentQueue, Handle,
 };
 
 fn main() {
     let config = BenchConfig::parse();
+
     match config.queue {
         Queue::DraQueue {
             subqueue,
@@ -31,20 +32,26 @@ fn main() {
             choice: d_choice,
         } => match subqueue {
             StrictQueue::MSQueue => {
-                let queue = DRaQueue::<MSQueue<_>, _>::new(subqueues, d_choice);
+                let queue = DRaQueue::<CountableWrapper<MSQueue<_>>, _>::new(subqueues, d_choice);
                 benchmark_producer_consumer(queue, config)
             }
             StrictQueue::LockFreeQueue => {
-                let queue = DRaQueue::<lockfree::queue::Queue<_>, _>::new(subqueues, d_choice);
+                let queue = DRaQueue::<CountableWrapper<lockfree::queue::Queue<_>>, _>::new(
+                    subqueues, d_choice,
+                );
                 benchmark_producer_consumer(queue, config)
             }
             StrictQueue::CrossbeamQueue => {
-                let queue = DRaQueue::<crossbeam_queue::SegQueue<_>, _>::new(subqueues, d_choice);
+                let queue = DRaQueue::<CountableWrapper<crossbeam_queue::SegQueue<_>>, _>::new(
+                    subqueues, d_choice,
+                );
                 benchmark_producer_consumer(queue, config)
             }
             StrictQueue::ConcurrentQueue => {
                 let queue =
-                    DRaQueue::<concurrent_queue::ConcurrentQueue<_>, _>::new(subqueues, d_choice);
+                    DRaQueue::<CountableWrapper<concurrent_queue::ConcurrentQueue<_>>, _>::new(
+                        subqueues, d_choice,
+                    );
                 benchmark_producer_consumer(queue, config)
             }
         },
