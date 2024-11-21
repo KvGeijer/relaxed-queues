@@ -18,7 +18,7 @@ use std::{
 
 use relaxed_queues::{
     relaxed_queues::{dra_queue::DRaQueue, round_robin_queue::RoundRobinQueue},
-    strict_queue::{countable_wrapper::CountableWrapper, ms::MSQueue},
+    strict_queues::{countable_wrapper::CountableWrapper, ms::MSQueue},
     ConcurrentQueue, Handle,
 };
 

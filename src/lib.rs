@@ -1,5 +1,5 @@
 pub mod relaxed_queues;
-pub mod strict_queue;
+pub mod strict_queues;
 
 pub trait QueueType {}
 

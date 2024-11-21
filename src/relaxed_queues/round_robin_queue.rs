@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::{strict_queue::ConcurrentSubQueue, ConcurrentQueue, Handle, Relaxed};
+use crate::{strict_queues::ConcurrentSubQueue, ConcurrentQueue, Handle, Relaxed};
 
 pub struct RoundRobinQueue<SubQueue, T> {
     subqueues: Vec<SubQueue>,

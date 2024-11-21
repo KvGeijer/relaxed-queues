@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use rand::{rngs::ThreadRng, Rng};
 
 use crate::{
-    strict_queue::{ConcurrentSubQueue, CountableConcurrentSubQueue},
+    strict_queues::{ConcurrentSubQueue, CountableConcurrentSubQueue},
     ConcurrentQueue, Handle, Relaxed,
 };
 
